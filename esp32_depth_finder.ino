@@ -38,7 +38,7 @@
 #define PPM_MIN_POS				950
 #define PPM_TOLERANCE			10
 
-#define CAM_WINCH_CHANNEL		5
+#define CAM_WINCH_CHANNEL		9 //5
 #define CAM_WINCH_PIN			5
 #define CAM_WINCH_UP			110
 #define	CAM_WINCH_DOWN			80
@@ -63,6 +63,7 @@
 
 
 typedef struct __attribute__((__packed__)) {
+	boolean wifiActive;
 	boolean deviceActive;
 	float depth;
 	float temperature;
@@ -112,6 +113,7 @@ String getMacString() {
 }
 
 void sendCommand(byte cmd, byte* payload, byte payloadLen, byte* response, byte* responseLen) {
+	digitalWrite(LED, HIGH);
 	byte command[32];
 	command[0] = START_BYTE;
 	command[1] = cmd;
@@ -143,6 +145,7 @@ void sendCommand(byte cmd, byte* payload, byte payloadLen, byte* response, byte*
 		DEBUGPRINTLN("CRC mismatch");
 		response[0] = START_BYTE_BROKEN_DATA;
 	}
+	digitalWrite(LED, LOW);
 }
 
 byte calculateCrc(byte* data, byte dataLen) {
@@ -187,6 +190,14 @@ void handshakeFishFInder() {
 }
 
 void requestFishFinderData() {
+	if (!flagTcpClientConnected) {
+		DEBUGPRINTLN("WiFI connection not activated, returning empty result");
+		fishFinderData.wifiActive = false;
+		fishFinderData.deviceActive = false;
+		fishFinderData.batteryLevel = 0;
+		reportFishFinderData();
+		return;
+	}
 	DEBUGPRINTLN("Request data:");
 	byte request[1] = { 1 };
 	byte response[32];
@@ -224,14 +235,21 @@ void blink() {
 }
 
 void reportFishFinderData() {
+	/*
+	char* array = (char*)&fishFinderData;
+	for (byte b = 0;b < sizeof(fishFinderData);b++) {
+		Serial2.write(array[b]);
+	}
+	*/
 	DEBUGPRINTF("Sizeof struct: %d\n", sizeof(fishFinderData));
-	//Serial2.println("Report");
-	Serial2.write((uint8_t*)&fishFinderData, sizeof(fishFinderData));
+	printArray((byte*)&fishFinderData, sizeof(fishFinderData));DEBUGPRINTLN();
+	uint8_t written = Serial2.write((uint8_t*)&fishFinderData, sizeof(fishFinderData));
 	Serial2.write('\r');
-	//Serial2.println("======");
+	DEBUGPRINTF("%d bytes written\n", written);
 }
 
 void parseFishFinderData(byte* response, uint8_t responseLen) {
+	//digitalWrite(LED, LOW);
 	if (response[0] == START_BYTE_BROKEN_DATA) {
 		return;
 	}
@@ -312,9 +330,10 @@ void getMac() {
 }
 
 void readSerial() {
-	if (Serial.available()) {
+	if (Serial2.available()) {
 		char c;
-		c = Serial.read();
+		c = Serial2.read();
+		//DEBUGPRINT(c);DEBUGPRINTLN();
 		executeCommand(c);
 	}
 }
@@ -325,6 +344,7 @@ void executeCommand(char c) {
 	case 's': //report status
 		break;
 	case 'd':
+		DEBUGPRINTLN("  Request");
 		requestFishFinderData();
 	}
 }
@@ -364,12 +384,13 @@ void IRAM_ATTR cam_endstop_handler() {
 
 void print_ppm() {
 	for (uint8_t i = 0; i < PPM_CHANNELS_NUMBER; i++){
-		DEBUGPRINT(channels[i]);DEBUGPRINT("   ");
+		DEBUGPRINT(i);DEBUGPRINT(": ");DEBUGPRINT(channels[i]);DEBUGPRINT("   ");
 	}
 	DEBUGPRINTLN();
 }
 
 void process_cam_winch() {
+	//print_ppm();
 	if ((channels[CAM_WINCH_CHANNEL] >= PPM_NEUTRAL_POS - PPM_TOLERANCE) && (channels[CAM_WINCH_CHANNEL] <= PPM_NEUTRAL_POS + PPM_TOLERANCE)) {
 		servoCamWinch.write(CAM_WINCH_STOP);
 	} else if (channels[CAM_WINCH_CHANNEL] >= PPM_MAX_POS - PPM_TOLERANCE) { //switch is DOWN, lower cam
@@ -438,7 +459,5 @@ void loop()
 		}
 	}
 
-	if (flagActivated) {
-		readSerial();
-	}
+	readSerial();
 }
