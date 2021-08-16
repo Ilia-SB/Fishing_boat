@@ -346,6 +346,23 @@ void executeCommand(char c) {
 	case 'd':
 		DEBUGPRINTLN("  Request");
 		requestFishFinderData();
+		break;
+	case 'h': //hello?
+		Serial2.write('h'); //hello!
+		if (flagWiFiConnected) {
+			Serial2.write('1');
+		}
+		else {
+			Serial2.write('0');
+		}
+		if (flagTcpClientConnected) {
+			Serial2.write('1');
+		}
+		else {
+			Serial2.write('0');
+		}
+		Serial2.write('\r');
+		break;
 	}
 }
 
